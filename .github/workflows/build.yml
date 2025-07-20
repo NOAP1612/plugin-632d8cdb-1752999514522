@@ -1,0 +1,83 @@
+name: Build Plugin
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux
+            cmake_config: -DCMAKE_BUILD_TYPE=Release
+            artifact_path: build/*_artefacts/Release/VST3/*.vst3
+            artifact_name: ________________feedback_______________.vst3
+          - os: macos-latest  
+            name: macOS
+            cmake_config: -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+            artifact_path: build/*_artefacts/Release/VST3/*.vst3
+            artifact_name: ________________feedback_______________.vst3
+          - os: windows-latest
+            name: Windows
+            cmake_config: -DCMAKE_BUILD_TYPE=Release
+            artifact_path: build/*_artefacts/Release/VST3/*.vst3
+            artifact_name: ________________feedback_______________.vst3
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup JUCE
+      run: |
+        git clone https://github.com/juce-framework/JUCE.git
+        cd JUCE && git checkout 7.0.9
+    
+    - name: Configure CMake
+      run: cmake -B build ${{ matrix.cmake_config }}
+    
+    - name: Build
+      run: cmake --build build --config Release
+    
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.name }}-________________feedback_______________
+        path: ${{ matrix.artifact_path }}
+        
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v1.0.${{ github.run_number }}
+        release_name: דיליי אנלוגי עם feedback וסינכרון לטמפו v1.0.${{ github.run_number }}
+        draft: false
+        prerelease: false
+        
+    - name: Upload VST3 Assets
+      run: |
+        for dir in */; do
+          if [ -d "$dir" ]; then
+            find "$dir" -name "*.vst3" -exec cp {} ${dir%/}-________________feedback_______________.vst3 \;
+            if [ -f "${dir%/}-________________feedback_______________.vst3" ]; then
+              curl -X POST \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary @"${dir%/}-________________feedback_______________.vst3" \
+                "${{ steps.create_release.outputs.upload_url }}?name=${dir%/}-________________feedback_______________.vst3"
+            fi
+          fi
+        done
